@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MellGames — Бронирование столиков</title>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card-bg: #151c2c;
+            --border: #222f47;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --danger: #ef4444;
+            --success: #10b981;
+            --text: #f8fafc;
+            --subtext: #94a3b8;
+            --accent: #a855f7;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 24px; display: flex; justify-content: center; min-height: 100vh; }
+        .container { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 20px; }
+
+        .brand-title {
+            font-size: 28px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #a855f7, #6366f1, #38bdf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .block { background: var(--card-bg); border-radius: 12px; padding: 20px; border: 1px solid var(--border); box-shadow: 0 4px 20px rgba(0,0,0,0.25); }
+        .header-row { display: flex; justify-content: space-between; align-items: center; }
+
+        input, select, button { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
+        input { background: #0b0f19; color: white; }
+        input:focus { outline: none; border-color: var(--primary); }
+        button { background: var(--primary); color: white; cursor: pointer; border: none; font-weight: 600; transition: 0.2s; }
+        button:hover { background: var(--primary-hover); }
+        button.btn-danger { background: var(--danger); }
+        button.btn-danger:hover { background: #dc2626; }
+
+        /* Сетка столиков */
+        .tables-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin-top: 14px; }
+        .table-card {
+            background: #1c263c; border-radius: 10px; padding: 16px; text-align: center; cursor: pointer;
+            border: 2px solid transparent; transition: all 0.2s ease;
+        }
+        .table-card:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: 0 4px 15px rgba(99,102,241,0.2); }
+        .table-num { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+        .table-desc { font-size: 12px; color: var(--subtext); }
+
+        /* Всплывающее окно выбора времени */
+        .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); justify-content: center; align-items: center; }
+        .modal-bg.open { display: flex; }
+        .modal-body { background: var(--card-bg); padding: 24px; border-radius: 12px; width: 340px; border: 1px solid var(--border); }
+        .slot-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; }
+        .slot-btn { background: #0b0f19; color: white; border: 1px solid var(--border); }
+        .slot-btn.busy { background: #451a1a; color: #f87171; border-color: #7f1d1d; cursor: not-allowed; }
+        .slot-btn.active { background: var(--success); border-color: var(--success); }
+
+        /* Список броней */
+        .booking-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-radius: 8px; background: #0b0f19; margin-top: 8px; border: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- Логотип и Вход / Регистрация -->
+    <div class="block header-row">
+        <div>
+            <h1 class="brand-title">MellGames</h1>
+            <p style="color: var(--subtext); font-size: 12px; margin-top: 2px;">Lounge & Gaming Restaurant</p>
+        </div>
+        <div id="loginForm" style="display: flex; gap: 10px;">
+            <input type="tel" id="userPhone" placeholder="Номер телефона">
+            <input type="text" id="userName" placeholder="Имя">
+            <button onclick="loginUser()">Войти / Регистрация</button>
+        </div>
+        <div id="loginInfo"></div>
+    </div>
+
+    <!-- Выбор даты и просмотр столов -->
+    <div class="block">
+        <div class="header-row">
+            <div>
+                <h3>Схема залов (всего 10 столиков)</h3>
+                <p style="color: var(--subtext); font-size: 13px;">Кликните на столик, чтобы выбрать доступное время</p>
+            </div>
+            <input type="date" id="reserveDate" onchange="loadTables()">
+        </div>
+
+        <div class="tables-grid" id="tablesContainer"></div>
+    </div>
+
+    <!-- История бронирований -->
+    <div class="block">
+        <h3>Мои бронирования в MellGames</h3>
+        <div id="bookingsList" style="margin-top: 10px;">
+            <p style="color: var(--subtext); font-size: 14px;">Войдите, чтобы увидеть свои столики.</p>
+        </div>
+    </div>
+
+</div>
+
+<!-- Модальное окно тайм-слотов -->
+<div class="modal-bg" id="bookingModal">
+    <div class="modal-body">
+        <h3 id="modalTableTitle">Столик</h3>
+        <p style="color: var(--subtext); font-size: 13px; margin-top: 4px;">Выберите доступное время:</p>
+
+        <div class="slot-list" id="slotsBox"></div>
+
+        <div class="header-row" style="margin-top: 14px;">
+            <button style="background: #475569;" onclick="closeModal()">Отмена</button>
+            <button id="submitBookBtn" onclick="sendBooking()" disabled>Подтвердить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let activePhone = localStorage.getItem("auth_phone") || "";
+    let chosenTable = null;
+    let chosenTime = null;
+
+    document.getElementById("reserveDate").value = new Date().toISOString().split("T")[0];
+
+    function updateLoginUI() {
+        const info = document.getElementById("loginInfo");
+        const form = document.getElementById("loginForm");
+
+        if (activePhone) {
+            form.style.display = "none";
+            info.innerHTML = `Вы вошли как: <b>${activePhone}</b> <button class="btn-danger" style="margin-left: 10px;" onclick="logout()">Выйти</button>`;
+            loadMyBookings();
+        } else {
+            form.style.display = "flex";
+            info.innerHTML = "";
+            document.getElementById("bookingsList").innerHTML = `<p style="color: var(--subtext); font-size: 14px;">Войдите, чтобы увидеть свои столики.</p>`;
+        }
+    }
+
+    async function loginUser() {
+        const phone = document.getElementById("userPhone").value.trim();
+        const name = document.getElementById("userName").value.trim();
+        if (!phone) return alert("Введите номер телефона");
+
+        await fetch("/api/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, name })
+        });
+
+        activePhone = phone;
+        localStorage.setItem("auth_phone", activePhone);
+        updateLoginUI();
+    }
+
+    function logout() {
+        localStorage.removeItem("auth_phone");
+        activePhone = "";
+        updateLoginUI();
+    }
+
+    async function loadTables() {
+        const date = document.getElementById("reserveDate").value;
+        const res = await fetch(`/api/tables?date=${date}`);
+        const tables = await res.json();
+
+        const container = document.getElementById("tablesContainer");
+        container.innerHTML = "";
+
+        tables.forEach(t => {
+            const card = document.createElement("div");
+            card.className = "table-card";
+            card.innerHTML = `
+                <div class="table-num">№${t.id}</div>
+                <div class="table-desc">${t.zone} • ${t.seats} мест</div>
+                <div style="font-size: 11px; margin-top: 8px; color: ${t.booked_times.length === t.all_slots.length ? '#ef4444' : '#10b981'};">
+                    Занято: ${t.booked_times.length}/${t.all_slots.length}
+                </div>
+            `;
+            card.onclick = () => openModal(t);
+            container.appendChild(card);
+        });
+    }
+
+    function openModal(table) {
+        if (!activePhone) return alert("Сначала войдите по номеру телефона!");
+
+        chosenTable = table;
+        chosenTime = null;
+        document.getElementById("submitBookBtn").disabled = true;
+        document.getElementById("modalTableTitle").innerText = `Столик №${table.id} (${table.zone})`;
+
+        const box = document.getElementById("slotsBox");
+        box.innerHTML = "";
+
+        table.all_slots.forEach(slot => {
+            const isBusy = table.booked_times.includes(slot);
+            const btn = document.createElement("button");
+            btn.className = `slot-btn ${isBusy ? "busy" : ""}`;
+            btn.innerText = isBusy ? `${slot} (Занят)` : slot;
+
+            if (!isBusy) {
+                btn.onclick = () => {
+                    document.querySelectorAll(".slot-btn").forEach(b => b.classList.remove("active"));
+                    btn.classList.add("active");
+                    chosenTime = slot;
+                    document.getElementById("submitBookBtn").disabled = false;
+                };
+            }
+            box.appendChild(btn);
+        });
+
+        document.getElementById("bookingModal").classList.add("open");
+    }
+
+    function closeModal() {
+        document.getElementById("bookingModal").classList.remove("open");
+    }
+
+    async function sendBooking() {
+        const date = document.getElementById("reserveDate").value;
+
+        const res = await fetch("/api/book", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                phone: activePhone,
+                table_id: chosenTable.id,
+                date: date,
+                time: chosenTime
+            })
+        });
+
+        const data = await res.json();
+        if (data.status === "ok") {
+            alert("Столик успешно забронирован в MellGames!");
+            closeModal();
+            loadTables();
+            loadMyBookings();
+        } else {
+            alert(data.message);
+        }
+    }
+
+    async function loadMyBookings() {
+        if (!activePhone) return;
+        const res = await fetch(`/api/my-bookings?phone=${encodeURIComponent(activePhone)}`);
+        const list = await res.json();
+
+        const box = document.getElementById("bookingsList");
+        box.innerHTML = list.length === 0 ? `<p style="color: var(--subtext); font-size: 14px;">Броней пока нет.</p>` : "";
+
+        list.forEach(b => {
+            box.innerHTML += `
+                <div class="booking-row">
+                    <div>
+                        <b>Столик №${b.table_id} (${b.zone})</b>
+                        <div style="color: var(--subtext); font-size: 13px;">${b.date} в ${b.time}</div>
+                    </div>
+                    <button class="btn-danger" onclick="cancelBooking(${b.id})">Отменить</button>
+                </div>
+            `;
+        });
+    }
+
+    async function cancelBooking(id) {
+        if (!confirm("Отменить эту бронь?")) return;
+        await fetch(`/api/bookings/${id}`, { method: "DELETE" });
+        loadTables();
+        loadMyBookings();
+    }
+
+    updateLoginUI();
+    loadTables();
+</script>
+</body>
+</html>
